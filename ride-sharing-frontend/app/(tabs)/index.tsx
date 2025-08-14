@@ -1,10 +1,10 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState } from "react";
 import { View, StyleSheet, ScrollView, Modal } from "react-native";
 import { Text, Button, Card, Portal } from "react-native-paper";
 import api from "../../src/services/api";
 import Toast from "react-native-toast-message";
 import { useRouter } from "expo-router";
-import OptimizedLocationPicker from "../../src/components/OptimizedLocationPicker";
+import LocationPicker from "../../src/components/LocationPicker";
 
 const router = useRouter();
 
@@ -14,14 +14,14 @@ interface Location {
     address: string;
 }
 
-export default React.memo(function RiderHomeScreen() {
+export default function RiderHomeScreen() {
     const [pickup, setPickup] = useState<Location | null>(null);
     const [drop, setDrop] = useState<Location | null>(null);
     const [status, setStatus] = useState<"idle" | "waiting" | "matched">("idle");
     const [showPickupPicker, setShowPickupPicker] = useState(false);
     const [showDropPicker, setShowDropPicker] = useState(false);
 
-    const handleRequestRide = useCallback(async () => {
+    const handleRequestRide = async () => {
         if (!pickup || !drop) {
             Toast.show({
                 type: "error",
@@ -78,25 +78,7 @@ export default React.memo(function RiderHomeScreen() {
             });
             setStatus("idle");
         }
-    }, [pickup, drop]);
-
-    const handlePickupSelect = useCallback((location: Location) => {
-        setPickup(location);
-        setShowPickupPicker(false);
-    }, []);
-
-    const handleDropSelect = useCallback((location: Location) => {
-        setDrop(location);
-        setShowDropPicker(false);
-    }, []);
-
-    const togglePickupPicker = useCallback(() => setShowPickupPicker(prev => !prev), []);
-    const toggleDropPicker = useCallback(() => setShowDropPicker(prev => !prev), []);
-
-    const isButtonDisabled = useMemo(() => !pickup || !drop || status === "waiting", [pickup, drop, status]);
-
-    const pickupText = useMemo(() => pickup ? pickup.address : "Select pickup location", [pickup]);
-    const dropText = useMemo(() => drop ? drop.address : "Select drop location", [drop]);
+    };
 
     return (
         <ScrollView contentContainerStyle={styles.scrollContainer}>
@@ -104,20 +86,20 @@ export default React.memo(function RiderHomeScreen() {
                 <Text style={styles.title}>👋 Hello, Rider</Text>
                 <Text style={styles.subtitle}>Where do you want to go?</Text>
 
-                <Card style={styles.locationCard} onPress={togglePickupPicker}>
+                <Card style={styles.locationCard} onPress={() => setShowPickupPicker(true)}>
                     <Card.Content>
                         <Text style={styles.locationLabel}>Pickup Location</Text>
                         <Text style={styles.locationText}>
-                            {pickupText}
+                            {pickup ? pickup.address : "Select pickup location"}
                         </Text>
                     </Card.Content>
                 </Card>
 
-                <Card style={styles.locationCard} onPress={toggleDropPicker}>
+                <Card style={styles.locationCard} onPress={() => setShowDropPicker(true)}>
                     <Card.Content>
                         <Text style={styles.locationLabel}>Drop Location</Text>
                         <Text style={styles.locationText}>
-                            {dropText}
+                            {drop ? drop.address : "Select drop location"}
                         </Text>
                     </Card.Content>
                 </Card>
@@ -126,8 +108,7 @@ export default React.memo(function RiderHomeScreen() {
                     mode="contained"
                     onPress={handleRequestRide}
                     style={styles.button}
-                    disabled={isButtonDisabled}
-                    loading={status === "waiting"}
+                    disabled={!pickup || !drop}
                 >
                     🚕 Request Ride
                 </Button>
@@ -135,22 +116,28 @@ export default React.memo(function RiderHomeScreen() {
                 <Portal>
                     <Modal
                         visible={showPickupPicker}
-                        onDismiss={togglePickupPicker}
+                        onDismiss={() => setShowPickupPicker(false)}
                         style={styles.modal}
                     >
-                        <OptimizedLocationPicker
-                            onLocationSelect={handlePickupSelect}
+                        <LocationPicker
+                            onLocationSelect={(location) => {
+                                setPickup(location);
+                                setShowPickupPicker(false);
+                            }}
                             placeholder="Search pickup location"
                         />
                     </Modal>
 
                     <Modal
                         visible={showDropPicker}
-                        onDismiss={toggleDropPicker}
+                        onDismiss={() => setShowDropPicker(false)}
                         style={styles.modal}
                     >
-                        <OptimizedLocationPicker
-                            onLocationSelect={handleDropSelect}
+                        <LocationPicker
+                            onLocationSelect={(location) => {
+                                setDrop(location);
+                                setShowDropPicker(false);
+                            }}
                             placeholder="Search drop location"
                         />
                     </Modal>
@@ -158,7 +145,7 @@ export default React.memo(function RiderHomeScreen() {
             </View>
         </ScrollView>
     );
-});
+}
 
 const styles = StyleSheet.create({
     scrollContainer: {
