@@ -54,4 +54,17 @@ const rideSchema = new mongoose.Schema({
     }
 });
 
+// Add indexes for performance optimization
+rideSchema.index({ status: 1, createdAt: -1 }); // For status queries with recent first
+rideSchema.index({ rider: 1, status: 1 }); // For user's ride history
+rideSchema.index({ driver: 1, status: 1 }); // For driver's ride assignments
+rideSchema.index({ "pickupLocation.address": "text", "dropLocation.address": "text" }); // Text search for locations
+rideSchema.index({ status: 1, "pickupLocation.address": 1, "dropLocation.address": 1 }); // Compound index for ride matching
+rideSchema.index({ createdAt: -1 }); // For sorting by creation date
+rideSchema.index({ group: 1 }); // For group-based queries
+
+// Add geospatial indexes for location-based queries (future enhancement)
+rideSchema.index({ "pickupLocation.latitude": 1, "pickupLocation.longitude": 1 });
+rideSchema.index({ "dropLocation.latitude": 1, "dropLocation.longitude": 1 });
+
 module.exports = mongoose.model("Ride", rideSchema);
