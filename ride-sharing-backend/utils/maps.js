@@ -1,13 +1,54 @@
 const axios = require('axios');
 
+// Simple in-memory cache for route calculations
+const routeCache = new Map();
+const geocodeCache = new Map();
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+// Helper function to create cache key
+function createRouteKey(origin, destination) {
+    return `${origin.latitude.toFixed(4)},${origin.longitude.toFixed(4)}-${destination.latitude.toFixed(4)},${destination.longitude.toFixed(4)}`;
+}
+
+function createGeocodeKey(latitude, longitude) {
+    return `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+}
+
+// Cache cleanup function
+function cleanupCache() {
+    const now = Date.now();
+    for (const [key, value] of routeCache.entries()) {
+        if (now - value.timestamp > CACHE_TTL) {
+            routeCache.delete(key);
+        }
+    }
+    for (const [key, value] of geocodeCache.entries()) {
+        if (now - value.timestamp > CACHE_TTL) {
+            geocodeCache.delete(key);
+        }
+    }
+}
+
+// Run cleanup every 15 minutes
+setInterval(cleanupCache, 15 * 60 * 1000);
+
 async function calculateDistanceAndDuration(origin, destination) {
+    const cacheKey = createRouteKey(origin, destination);
+    const cached = routeCache.get(cacheKey);
+    
+    // Check cache first
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.data;
+    }
+
     try {
         // Use OSRM API to get actual road route
         const response = await axios.get(
             `https://router.project-osrm.org/route/v1/driving/` +
             `${origin.longitude},${origin.latitude};` +
             `${destination.longitude},${destination.latitude}` +
-            `?overview=full&geometries=geojson`
+            `?overview=full&geometries=geojson`,
+            { timeout: 5000 } // Add timeout
         );
 
         if (response.data.code !== 'Ok') {
@@ -22,17 +63,33 @@ async function calculateDistanceAndDuration(origin, destination) {
         const distanceText = formatDistance(distance);
         const durationText = formatDuration(duration);
 
-        return {
+        const result = {
             distance: distanceText,
             distanceValue: Math.round(distance),
             duration: durationText,
             durationValue: Math.round(duration),
             route: route.geometry // GeoJSON LineString of the route
         };
+
+        // Cache the result
+        routeCache.set(cacheKey, {
+            data: result,
+            timestamp: Date.now()
+        });
+
+        return result;
     } catch (error) {
         console.error('Error calculating route:', error);
         // Fallback to straight-line calculation if OSRM fails
-        return calculateRealisticDistance(origin, destination);
+        const fallbackResult = calculateRealisticDistance(origin, destination);
+        
+        // Cache fallback result with shorter TTL
+        routeCache.set(cacheKey, {
+            data: fallbackResult,
+            timestamp: Date.now() - (CACHE_TTL * 0.8) // Cache for shorter time
+        });
+        
+        return fallbackResult;
     }
 }
 
@@ -117,16 +174,34 @@ function formatDuration(seconds) {
 }
 
 async function reverseGeocode(latitude, longitude) {
+    const cacheKey = createGeocodeKey(latitude, longitude);
+    const cached = geocodeCache.get(cacheKey);
+    
+    // Check cache first
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return cached.data;
+    }
+
     try {
         const response = await axios.get(
             `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
             {
                 headers: {
                     'User-Agent': 'RideShareApp/1.0'
-                }
+                },
+                timeout: 5000 // Add timeout
             }
         );
-        return response.data.display_name;
+        
+        const result = response.data.display_name;
+        
+        // Cache the result
+        geocodeCache.set(cacheKey, {
+            data: result,
+            timestamp: Date.now()
+        });
+        
+        return result;
     } catch (error) {
         console.error('Error reverse geocoding:', error);
         throw error;

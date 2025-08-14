@@ -1,8 +1,8 @@
 import { View, StyleSheet } from "react-native";
 import { Text, TextInput, Button } from "react-native-paper";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import api from "../src/services/api";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AuthStorage } from "../src/utils/storage";
 import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
 
@@ -11,15 +11,26 @@ const router = useRouter();
 export default function LoginScreen() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [loading, setLoading] = useState(false);
 
-    const handleLogin = async () => {
+    const handleLogin = useCallback(async () => {
+        if (loading) return;
+        
         try {
+            setLoading(true);
             const response = await api.post("/auth/login", {
                 email,
                 password,
             });
 
-            const { token, role } = response.data;
+            const { token, role, user } = response.data;
+
+            // Use optimized storage
+            await Promise.all([
+                AuthStorage.setToken(token),
+                AuthStorage.setRole(role),
+                AuthStorage.setUserData(user)
+            ]);
 
             Toast.show({
                 type: "success",
@@ -33,12 +44,6 @@ export default function LoginScreen() {
             } else if (role === "driver") {
                 router.push("/(driver)/dashboard");
             }
-
-            // Inside handleLogin:
-            await AsyncStorage.setItem("token", token);
-            await AsyncStorage.setItem("role", role);
-
-            // TODO: Navigate to dashboard
         } catch (error: any) {
             const msg = error?.response?.data?.message || "Login failed";
             Toast.show({
@@ -47,8 +52,10 @@ export default function LoginScreen() {
                 text1: "Login Error",
                 text2: msg,
             });
+        } finally {
+            setLoading(false);
         }
-    };
+    }, [email, password, loading]);
 
     return (
         <View style={styles.container}>
@@ -60,6 +67,9 @@ export default function LoginScreen() {
                 onChangeText={setEmail}
                 mode="outlined"
                 style={styles.input}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
             />
 
             <TextInput
@@ -69,9 +79,15 @@ export default function LoginScreen() {
                 mode="outlined"
                 secureTextEntry
                 style={styles.input}
+                autoComplete="password"
             />
 
-            <Button mode="contained" onPress={handleLogin}>
+            <Button 
+                mode="contained" 
+                onPress={handleLogin}
+                loading={loading}
+                disabled={loading || !email || !password}
+            >
                 Login
             </Button>
 
